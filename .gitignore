@@ -14,3 +14,41 @@ backend/.env
 web_content_app_plain/plain-server*.log
 web_content_app_plain/plain-server.pid
 web_content_app_plain/vite-dev.pid
+
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.venv/
+venv/
+env/
+
+# Node / React / Vite
+node_modules/
+dist/
+build/
+.vite/
+
+# Environment / secrets
+.env
+.env.*
+!.env.example
+
+# Logs
+logs/
+*.log
+
+# OS / Editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Database / backup
+*.db
+*.sqlite
+*.sqlite3
+backup/
+backups/
