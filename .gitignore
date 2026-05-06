@@ -1,0 +1,16 @@
+﻿node_modules/
+web_content_app/node_modules/
+__pycache__/
+.pytest_cache/
+pytest-cache-files-*/
+test-results/
+.playwright-audit/
+*.log
+*.pid
+*.pyc
+*.bak.*
+~$*
+backend/.env
+web_content_app_plain/plain-server*.log
+web_content_app_plain/plain-server.pid
+web_content_app_plain/vite-dev.pid

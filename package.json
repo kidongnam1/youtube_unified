@@ -1,0 +1,19 @@
+{
+  "name": "youtube_unified",
+  "version": "1.0.0",
+  "description": "`youtube_movie`와 `youtube_auto`를 한 폴더에서 관리하기 위한 통합 작업 폴더입니다.",
+  "main": "playwright-audit-runner.js",
+  "directories": {
+    "doc": "docs"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "playwright": "^1.59.1"
+  }
+}

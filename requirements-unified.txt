@@ -1,0 +1,7 @@
+# Unified Python requirements
+-r desktop_app/requirements.txt
+youtube-transcript-api
+fastapi
+uvicorn
+python-dotenv
+httpx
