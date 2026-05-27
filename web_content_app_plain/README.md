@@ -23,6 +23,7 @@ http://localhost:3000/
 
 ## 포함 기능
 
+- 자세한 사용법: `MANUAL.md`
 - API 키·모델: Gemini(텍스트/이미지), ElevenLabs, FAL — 모두 `localStorage`에만 저장
 - 주제 또는 수동 대본 → Gemini 스토리보드 생성, 수동 씬 분할
 - 씬별 편집(나레이션·이미지 프롬프트) 및 에셋 미리보기

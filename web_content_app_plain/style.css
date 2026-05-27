@@ -37,6 +37,8 @@ select {
 .sidebar {
   width: 270px;
   min-height: 100vh;
+  max-height: 100vh;
+  overflow-y: auto;
   background: var(--sidebar);
   color: #E5E7EB;
   padding: 26px 22px;
@@ -104,7 +106,6 @@ nav {
 }
 
 .sidebar-note {
-  margin-top: auto;
   border: 1px solid var(--sidebar-line);
   border-radius: 8px;
   padding: 14px;
@@ -117,6 +118,133 @@ nav {
 
 .sidebar-note strong {
   color: #ffffff;
+}
+
+.settings-trigger {
+  margin-top: auto;
+  width: 100%;
+  border: 1px solid var(--sidebar-line);
+  background: #111827;
+  color: #F8FAFC;
+  padding: 12px 14px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.settings-trigger:hover {
+  border-color: var(--line);
+  background: #1E293B;
+}
+
+.settings-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(2, 6, 23, 0.58);
+  z-index: 20;
+}
+
+.settings-drawer {
+  position: fixed;
+  top: 0;
+  right: 0;
+  width: min(420px, 92vw);
+  height: 100vh;
+  background: #0B1220;
+  border-left: 1px solid var(--line);
+  padding: 22px;
+  z-index: 21;
+  transform: translateX(100%);
+  transition: transform 0.18s ease;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  box-shadow: -24px 0 60px rgba(0, 0, 0, 0.35);
+}
+
+.settings-drawer.open {
+  transform: translateX(0);
+}
+
+.settings-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.settings-head strong,
+.settings-head span {
+  display: block;
+}
+
+.settings-head strong {
+  color: #F8FAFC;
+  font-size: 20px;
+}
+
+.settings-head span {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.icon-button {
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: #111827;
+  color: #E5E7EB;
+  cursor: pointer;
+  font-size: 22px;
+  line-height: 1;
+}
+
+.settings-help {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.sidebar-api {
+  border: 1px solid var(--sidebar-line);
+  border-radius: 8px;
+  padding: 14px;
+  background: #111827;
+  display: grid;
+  gap: 10px;
+}
+
+.sidebar-api > strong {
+  color: #F8FAFC;
+  font-size: 14px;
+}
+
+.sidebar-api .compact-field {
+  gap: 6px;
+  margin-bottom: 0;
+}
+
+.sidebar-api .compact-field span {
+  font-size: 12px;
+}
+
+.sidebar-api input,
+.sidebar-api select,
+.sidebar-api textarea {
+  padding: 8px 10px;
+  font-size: 12px;
+  border-radius: 7px;
+}
+
+.sidebar-api-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
 }
 
 .shell {

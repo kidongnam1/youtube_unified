@@ -55,6 +55,7 @@ def save_transcript():
 
 # --- GUI 설정 ---
 root = tk.Tk()
+root.withdraw()
 root.title("루비의 유튜브 스크립트 추출기 v2.0")
 root.geometry("600x300")
 root.configure(bg="#0F172A")  # Dark background
@@ -92,4 +93,11 @@ exec_btn = tk.Button(root, text="스크립트 추출 및 저장 시작", command
                       height=2, relief="flat", activebackground=accent_yellow_bright, cursor="hand2")
 exec_btn.pack(pady=30, fill=tk.X, padx=100)
 
+def show_window():
+    root.update_idletasks()
+    root.deiconify()
+    root.lift()
+    url_entry.focus_set()
+
+root.after(0, show_window)
 root.mainloop()

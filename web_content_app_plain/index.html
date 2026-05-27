@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>TubeGen Plain - HTML/JS</title>
+    <title>YouTube Unified</title>
     <link rel="stylesheet" href="./style.css">
   </head>
   <body>
@@ -11,8 +11,8 @@
       <div class="brand">
         <span class="brand-mark">TU</span>
         <div>
-          <strong>TubeGen Plain</strong>
-          <small>HTML / JS 콘텐츠 자동화</small>
+          <strong>YouTube Unified</strong>
+          <small>콘텐츠 자동화</small>
         </div>
       </div>
       <nav>
@@ -20,12 +20,67 @@
         <button class="nav-button" data-view="automation">영상 자동화</button>
         <button class="nav-button" data-view="subtitles">자막 추출</button>
         <button class="nav-button" data-view="projects">저장된 프로젝트</button>
-        <button class="nav-button" data-view="settings">API 설정</button>
       </nav>
+      <section class="sidebar-api sidebar-ai-options" aria-label="AI 옵션">
+        <strong>AI 옵션</strong>
+        <label class="field compact-field">
+          <span>텍스트 모델</span>
+          <select id="geminiModel">
+            <option value="gemini-2.5-flash">gemini-2.5-flash</option>
+            <option value="gemini-2.0-flash">gemini-2.0-flash</option>
+          </select>
+        </label>
+        <label class="field compact-field">
+          <span>이미지 모델</span>
+          <select id="geminiImageModel">
+            <option value="gemini-2.5-flash-image">gemini-2.5-flash-image</option>
+          </select>
+        </label>
+        <label class="field compact-field">
+          <span>이미지 화풍</span>
+          <select id="geminiStyle">
+            <option value="gemini-none">화풍 없음</option>
+            <option value="gemini-crayon">크레용</option>
+            <option value="gemini-korea-cartoon">한국 경제 카툰</option>
+            <option value="gemini-watercolor">수채화</option>
+            <option value="gemini-custom">커스텀</option>
+          </select>
+        </label>
+        <label class="field compact-field" id="geminiCustomRow" style="display:none">
+          <span>커스텀 화풍</span>
+          <textarea id="geminiCustomStyle" rows="3" placeholder="영문 프롬프트"></textarea>
+        </label>
+      </section>
+      <button class="settings-trigger" type="button" id="settingsToggleBtn" aria-controls="settingsPanel" aria-expanded="false">
+        <span aria-hidden="true">⚙</span>
+        <strong>API 키 설정</strong>
+      </button>
       <div class="sidebar-note">
         <strong>React 제거판</strong>
         <span>빌드 도구 없이 브라우저와 로컬 서버만 사용합니다.</span>
       </div>
+    </aside>
+
+    <div class="settings-backdrop" id="settingsBackdrop" hidden></div>
+    <aside class="settings-drawer" id="settingsPanel" aria-label="API 키 설정" aria-hidden="true">
+      <div class="settings-head">
+        <div>
+          <strong>API 키 설정</strong>
+          <span>Gemini API Key</span>
+        </div>
+        <button class="icon-button" type="button" id="settingsCloseBtn" aria-label="설정 닫기">×</button>
+      </div>
+      <section class="sidebar-api" aria-label="API 설정">
+        <label class="field compact-field">
+          <span>Gemini API Key</span>
+          <input id="geminiKey" type="password" autocomplete="off" placeholder="AIza...">
+        </label>
+        <div class="sidebar-api-actions">
+          <button class="primary tiny" id="saveSettingsBtn">저장</button>
+          <button class="secondary tiny" id="testKeyBtn">테스트</button>
+        </div>
+      </section>
+      <p class="settings-help">API 키는 이 브라우저에만 저장됩니다.</p>
     </aside>
 
     <main class="shell">
@@ -88,22 +143,18 @@
         <section class="panel pipeline-panel">
           <div class="panel-head">
             <h2>미디어 파이프라인</h2>
-            <span>Gemini 이미지 · ElevenLabs TTS · FAL · 브라우저 MP4/WebM</span>
+            <span>Gemini 이미지 · 브라우저 MP4/WebM</span>
           </div>
           <p class="help-text" style="margin-top:0">
-            API 키는 브라우저에만 저장됩니다. ElevenLabs는 CORS로 목록 조회가 막힐 수 있어 Voice ID를 직접 입력합니다.
+            Gemini API 키는 왼쪽 YouTube Unified 영역 하단에서 저장합니다.
           </p>
           <div class="button-row">
             <button class="primary" type="button" id="genImagesBtn">전체 이미지 생성</button>
-            <button class="primary" type="button" id="genTtsBtn">전체 TTS</button>
-            <button class="primary" type="button" id="genFalBtn">FAL 영상 (앞 N씬)</button>
             <button class="primary" type="button" id="exportMp4Btn">MP4/WebM 내보내기</button>
+            <button class="secondary" type="button" id="convertLastVideoBtn">WebM → MP4 변환</button>
+            <input id="convertVideoFileInput" type="file" accept=".webm,video/webm" style="display:none">
             <button class="danger" type="button" id="pipelineCancelBtn">렌더 취소 요청</button>
           </div>
-          <label class="field inline-field">
-            <span>FAL 최대 씬 수 (앞에서부터)</span>
-            <input id="falSceneLimit" type="number" min="1" max="99" value="10" style="max-width:120px">
-          </label>
         </section>
 
         <section class="panel result-panel">
@@ -239,81 +290,8 @@
         </section>
       </section>
 
-      <section class="view" id="view-settings">
-        <section class="panel settings-panel">
-          <div class="panel-head">
-            <h2>API 설정</h2>
-            <span>브라우저 localStorage에만 저장됩니다.</span>
-          </div>
-          <label class="field">
-            <span>Gemini API Key</span>
-            <input id="geminiKey" type="password" placeholder="AIza...">
-          </label>
-          <label class="field">
-            <span>Gemini 텍스트 모델 (스토리보드)</span>
-            <select id="geminiModel">
-              <option value="gemini-2.5-flash">gemini-2.5-flash</option>
-              <option value="gemini-2.0-flash">gemini-2.0-flash</option>
-            </select>
-          </label>
-          <label class="field">
-            <span>Gemini 이미지 모델</span>
-            <select id="geminiImageModel">
-              <option value="gemini-2.5-flash-image">gemini-2.5-flash-image</option>
-            </select>
-          </label>
-          <label class="field">
-            <span>이미지 화풍 프리셋</span>
-            <select id="geminiStyle">
-              <option value="gemini-none">화풍 없음</option>
-              <option value="gemini-crayon">크레용</option>
-              <option value="gemini-korea-cartoon">한국 경제 카툰</option>
-              <option value="gemini-watercolor">수채화</option>
-              <option value="gemini-custom">커스텀</option>
-            </select>
-          </label>
-          <label class="field" id="geminiCustomRow" style="display:none">
-            <span>커스텀 화풍 (영문 프롬프트)</span>
-            <textarea id="geminiCustomStyle" rows="3" placeholder="커스텀 선택 시에만 사용됩니다."></textarea>
-          </label>
-
-          <hr class="settings-divider" />
-
-          <label class="field">
-            <span>ElevenLabs API Key</span>
-            <input id="elevenLabsKey" type="password" autocomplete="off" placeholder="xi-api-key">
-          </label>
-          <label class="field">
-            <span>ElevenLabs Voice ID</span>
-            <input id="elevenLabsVoice" type="text" placeholder="예: 21m00Tcm4TlvDq8ikWAM (Rachel)">
-          </label>
-          <label class="field">
-            <span>ElevenLabs 모델</span>
-            <select id="elevenLabsModel">
-              <option value="eleven_multilingual_v2">Multilingual v2</option>
-              <option value="eleven_v3">Eleven v3</option>
-              <option value="eleven_turbo_v2_5">Turbo v2.5</option>
-              <option value="eleven_flash_v2_5">Flash v2.5</option>
-              <option value="eleven_turbo_v2">Turbo v2</option>
-            </select>
-          </label>
-
-          <label class="field">
-            <span>FAL API Key (PixVerse)</span>
-            <input id="falKey" type="password" autocomplete="off" placeholder="fal.ai 키">
-          </label>
-
-          <div class="button-row">
-            <button class="primary" id="saveSettingsBtn">설정 저장</button>
-            <button class="secondary" id="testKeyBtn">Gemini 키 테스트</button>
-          </div>
-          <p class="help-text">
-            운영 배포용이 아니라 로컬 사용용입니다. 브라우저에서 API를 직접 호출하므로 키 관리에 주의하세요.
-          </p>
-        </section>
-      </section>
     </main>
 
-    <script type="module" src="./app.js"></script>
+    <script type="module" src="./app.js?v=20260527-ffmpeg-render-v2"></script>
   </body>
 </html>

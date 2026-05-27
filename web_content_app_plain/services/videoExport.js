@@ -148,7 +148,7 @@ export async function generateVideo(assets, onProgress, abortRef, options = {}) 
 
   const preparedScenes = [];
   let timelinePointer = 0;
-  const DEFAULT_DURATION = 3;
+  const DEFAULT_DURATION = Math.max(1, Number(options.defaultSceneDuration) || 5);
 
   for (let i = 0; i < validAssets.length; i++) {
     const asset = validAssets[i];
@@ -221,12 +221,16 @@ export async function generateVideo(assets, onProgress, abortRef, options = {}) 
     }
 
     let audioBuffer = null;
-    let duration = DEFAULT_DURATION;
+    let duration = Math.max(
+      DEFAULT_DURATION,
+      Number(asset.audioDuration) || 0,
+      Number(asset.videoDuration) || 0
+    );
 
     if (asset.audioData) {
       try {
         audioBuffer = await decodeAudio(asset.audioData, audioCtx);
-        duration = audioBuffer.duration;
+        duration = Math.max(duration, audioBuffer.duration || 0);
       } catch {
         /* keep default */
       }
@@ -264,14 +268,17 @@ export async function generateVideo(assets, onProgress, abortRef, options = {}) 
     ...destination.stream.getAudioTracks(),
   ]);
 
-  const mimeType = MediaRecorder.isTypeSupported('video/mp4; codecs="avc1.42E01E, mp4a.40.2"')
-    ? 'video/mp4; codecs="avc1.42E01E, mp4a.40.2"'
-    : "video/webm; codecs=vp9,opus";
+  const mimeType = MediaRecorder.isTypeSupported("video/webm; codecs=vp9,opus")
+    ? "video/webm; codecs=vp9,opus"
+    : MediaRecorder.isTypeSupported("video/webm")
+      ? "video/webm"
+      : "";
 
-  const recorder = new MediaRecorder(combinedStream, {
-    mimeType,
+  const recorderOptions = {
     videoBitsPerSecond: 12000000,
-  });
+  };
+  if (mimeType) recorderOptions.mimeType = mimeType;
+  const recorder = new MediaRecorder(combinedStream, recorderOptions);
 
   const chunks = [];
   recorder.ondataavailable = (e) => e.data.size > 0 && chunks.push(e.data);
@@ -333,7 +340,7 @@ export async function generateVideo(assets, onProgress, abortRef, options = {}) 
       }
     });
 
-    recorder.start();
+    recorder.start(1000);
 
     const renderLoop = () => {
       if (isFinished) return;
@@ -345,7 +352,7 @@ export async function generateVideo(assets, onProgress, abortRef, options = {}) 
       }
 
       const currentAudioTime = audioCtx.currentTime;
-      const elapsed = currentAudioTime - masterStartTime;
+      const elapsed = Math.max(0, currentAudioTime - masterStartTime);
 
       if (elapsed >= totalDuration) {
         isFinished = true;

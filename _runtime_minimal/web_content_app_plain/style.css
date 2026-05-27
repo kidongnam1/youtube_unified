@@ -37,6 +37,8 @@ select {
 .sidebar {
   width: 270px;
   min-height: 100vh;
+  max-height: 100vh;
+  overflow-y: auto;
   background: var(--sidebar);
   color: #E5E7EB;
   padding: 26px 22px;
@@ -104,7 +106,6 @@ nav {
 }
 
 .sidebar-note {
-  margin-top: auto;
   border: 1px solid var(--sidebar-line);
   border-radius: 8px;
   padding: 14px;
@@ -117,6 +118,44 @@ nav {
 
 .sidebar-note strong {
   color: #ffffff;
+}
+
+.sidebar-api {
+  margin-top: auto;
+  border: 1px solid var(--sidebar-line);
+  border-radius: 8px;
+  padding: 14px;
+  background: #111827;
+  display: grid;
+  gap: 10px;
+}
+
+.sidebar-api > strong {
+  color: #F8FAFC;
+  font-size: 14px;
+}
+
+.sidebar-api .compact-field {
+  gap: 6px;
+  margin-bottom: 0;
+}
+
+.sidebar-api .compact-field span {
+  font-size: 12px;
+}
+
+.sidebar-api input,
+.sidebar-api select,
+.sidebar-api textarea {
+  padding: 8px 10px;
+  font-size: 12px;
+  border-radius: 7px;
+}
+
+.sidebar-api-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
 }
 
 .shell {

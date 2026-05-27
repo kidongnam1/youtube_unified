@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import html
 import os
+import shutil
 import subprocess
 import sys
 import time
@@ -22,6 +23,7 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QProgressBar,
     QPushButton,
+    QSizePolicy,
     QTextEdit,
     QVBoxLayout,
     QWidget,
@@ -32,13 +34,27 @@ DESKTOP_APP_DIR = ROOT / "desktop_app"
 WEB_APP_DIR = ROOT / "web_content_app_plain"
 TOOLS_DIR = ROOT / "tools"
 VITE_PID_FILE = WEB_APP_DIR / "vite-dev.pid"
-WEB_URL = "http://localhost:3000/"
+WEB_URL = "http://localhost:3000/?v=20260527-ffmpeg-render-v2"
 DEBUG_LOG_FILE = ROOT / "launcher_crash.log"
 CHILD_LOG_FILE = ROOT / "launcher_child.log"
 
 
 def now_text() -> str:
     return datetime.now().strftime("%H:%M:%S")
+
+
+def _windowed_python_executable() -> str:
+    """Return a Python executable that does not create a console on Windows."""
+    if os.name != "nt":
+        return sys.executable
+    current = Path(sys.executable)
+    if current.name.lower() == "pythonw.exe":
+        return str(current)
+    sibling = current.with_name("pythonw.exe")
+    if sibling.exists():
+        return str(sibling)
+    found = shutil.which("pythonw") or shutil.which("pyw")
+    return found or sys.executable
 
 
 # ===========================================================================
@@ -107,6 +123,7 @@ class LauncherWindow(QMainWindow):
         self._active_action_label: str | None = None
         self._active_probes: list[_AsyncProbe] = []
         self._busy_progress_value = 0
+        self._auto_started_unified = False
         # [P0 PATCH] UI 스레드 차단 방지용 워커 풀 (글로벌 풀 공유).
         self._pool = QThreadPool.globalInstance()
         # 이전 버전의 커서 복원 콜백이 남아 있어도 안전하게 무시하기 위한 토큰.
@@ -139,9 +156,10 @@ class LauncherWindow(QMainWindow):
         container.setLayout(root_layout)
         self.setCentralWidget(container)
         self._apply_theme()
-        self.log("준비 완료 — 아래에서 시작할 작업을 고르세요.")
+        self.log("통합 웹 앱 자동 실행을 준비합니다.")
         self._append_debug("INFO", "LauncherWindow 초기화 완료")
         QTimer.singleShot(150, self.refresh_status)
+        QTimer.singleShot(500, self._auto_start_unified_web_app)
 
         # 주기 갱신은 화면 깜빡임 이슈가 있는 환경에서 부담이 될 수 있어 기본 비활성.
         # 상태는 실행 액션 이후 즉시 refresh_status()로 갱신한다.
@@ -303,15 +321,13 @@ class LauncherWindow(QMainWindow):
 
         title = QLabel("YouTube\nUnified")
         title.setObjectName("brand")
-        caption = QLabel("영상 제작 흐름을 한 창에서 제어")
+        caption = QLabel("통합 웹 앱을 자동으로 시작")
         caption.setObjectName("caption")
         caption.setWordWrap(True)
 
         tips = QLabel(
-            "시작 방법\n"
-            "① 작업 카드를 선택\n"
-            "② 초록색 버튼 클릭\n"
-            "③ 상단 상태 확인"
+            "시작하면 백엔드와 웹 서버를 함께 준비한 뒤 브라우저를 엽니다.\n\n"
+            "아래 보조 도구는 필요할 때만 따로 실행하세요."
         )
         tips.setObjectName("sidebarTips")
         tips.setWordWrap(True)
@@ -362,9 +378,9 @@ class LauncherWindow(QMainWindow):
 
     def _content(self) -> QWidget:
         content = QWidget()
-        title = QLabel("무엇을 하시겠어요?")
+        title = QLabel("통합 웹 앱")
         title.setObjectName("pageTitle")
-        subtitle = QLabel("처음이시면 아래 세 가지 중 하나를 선택하세요.")
+        subtitle = QLabel("프로그램 시작과 동시에 백엔드, 웹 서버, 브라우저를 한 번에 실행합니다.")
         subtitle.setObjectName("pageSubtitle")
 
         cards = QGridLayout()
@@ -372,43 +388,47 @@ class LauncherWindow(QMainWindow):
         cards.setVerticalSpacing(14)
         cards.addWidget(
             self._action_card(
-                "★ 통합 웹 앱 (추천)",
+                "통합 실행",
                 "백엔드 + 웹 서버 + 브라우저 자동 실행",
-                "통합 앱 실행하기",
+                "다시 열기",
                 self.run_unified_web_app,
             ),
             0,
             0,
+            1,
+            2,
         )
         cards.addWidget(
             self._action_card(
-                "① [레거시] 영상 만들기",
+                "보조 도구: 영상 만들기",
                 "PySide6 데스크톱 앱",
                 "데스크톱 앱 열기",
                 self.run_desktop_app,
             ),
-            0,
             1,
+            0,
         )
         cards.addWidget(
             self._action_card(
-                "② [레거시] 웹으로 편집",
+                "보조 도구: 기존 웹",
                 "정적 HTML 서버 방식",
                 "기존 웹 열기",
                 self.start_and_open_web_app,
             ),
             1,
-            0,
+            1,
         )
         cards.addWidget(
             self._action_card(
-                "③ [레거시] 자막만 저장",
+                "보조 도구: 자막 저장",
                 "Tkinter 독립 도구",
                 "자막 도구 열기",
                 self.run_transcript_tool,
             ),
+            2,
+            0,
             1,
-            1,
+            2,
         )
 
         layout = QVBoxLayout()
@@ -440,6 +460,7 @@ class LauncherWindow(QMainWindow):
         button.clicked.connect(_wrapped_click)
         self._action_buttons.append(button)
         tooltip_map = {
+            "다시 열기": "통합 웹 앱이 이미 준비된 경우 브라우저를 다시 엽니다.",
             "통합 앱 실행하기": "백엔드(8000) + 웹 서버(3000) 실행 후 브라우저를 자동으로 엽니다.",
             "데스크톱 앱 열기": "레거시 PySide6 영상 자동화 앱(run.py)을 실행합니다.",
             "기존 웹 열기": "정적 웹 서버를 시작/확인한 뒤 기본 브라우저로 엽니다.",
@@ -452,6 +473,7 @@ class LauncherWindow(QMainWindow):
     def _action_card(self, title: str, description: str, button_text: str, handler) -> QFrame:
         card = QFrame()
         card.setObjectName("card")
+        card.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         title_label = QLabel(title)
         title_label.setObjectName("cardTitle")
         desc_label = QLabel(description)
@@ -468,6 +490,17 @@ class LauncherWindow(QMainWindow):
         layout.addWidget(button)
         card.setLayout(layout)
         return card
+
+    def _auto_start_unified_web_app(self) -> None:
+        if self._auto_started_unified:
+            return
+        self._auto_started_unified = True
+        if self._action_active:
+            return
+        if not self._begin_action("통합 웹 앱 자동 실행"):
+            return
+        self._append_debug("ACTION", "자동 실행: 통합 웹 앱")
+        self.run_unified_web_app()
 
     def log(self, message: str, level: str = "info") -> None:
         t = now_text()
@@ -541,6 +574,60 @@ class LauncherWindow(QMainWindow):
 
     def _web_ready(self) -> bool:
         return self._url_ready(WEB_URL, timeout=0.45)
+
+    def _backend_ready(self) -> bool:
+        return self._url_ready("http://127.0.0.1:8000/", timeout=0.45)
+
+    def _backend_supports_current_features(self) -> bool:
+        try:
+            with urllib.request.urlopen("http://127.0.0.1:8000/api/system/capabilities", timeout=0.6) as response:
+                if not (200 <= response.status < 400):
+                    return False
+                import json
+
+                data = json.loads(response.read().decode("utf-8"))
+                return bool(data.get("asset_save") and data.get("open_folder"))
+        except Exception:
+            return False
+
+    def _listening_pids_on_port(self, port: int) -> list[int]:
+        if os.name != "nt":
+            return []
+        result = subprocess.run(
+            ["netstat", "-ano", "-p", "tcp"],
+            check=False,
+            capture_output=True,
+            text=True,
+            creationflags=subprocess.CREATE_NO_WINDOW,
+        )
+        pids: set[int] = set()
+        suffix = f":{port}"
+        for line in result.stdout.splitlines():
+            parts = line.split()
+            if len(parts) < 5 or parts[0].upper() != "TCP":
+                continue
+            local_addr, state, pid_text = parts[1], parts[3].upper(), parts[4]
+            if state == "LISTENING" and local_addr.endswith(suffix) and pid_text.isdigit():
+                pids.add(int(pid_text))
+        return sorted(pids)
+
+    def _terminate_backend_port_owners(self) -> list[int]:
+        killed: list[int] = []
+        for pid in self._listening_pids_on_port(8000):
+            try:
+                subprocess.run(
+                    ["taskkill", "/PID", str(pid), "/T", "/F"],
+                    check=False,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    creationflags=subprocess.CREATE_NO_WINDOW,
+                )
+                killed.append(pid)
+            except Exception:
+                pass
+        if killed:
+            time.sleep(0.4)
+        return killed
 
     def _url_ready(self, url: str, timeout: float = 1.2) -> bool:
         try:
@@ -693,16 +780,32 @@ class LauncherWindow(QMainWindow):
 
         def backend_checked(already_ready: bool) -> None:
             if already_ready:
-                self.log("통합 백엔드 서버가 이미 실행 중입니다.")
-                ready["backend"] = True
-                self._show_busy("백엔드 서버 확인 완료", 45)
-                maybe_open()
+                self._show_busy("기존 백엔드 버전 확인 중...", 42)
+
+                def capability_checked(current_ok: bool) -> None:
+                    if current_ok:
+                        self.log("통합 백엔드 서버가 이미 실행 중입니다.")
+                        ready["backend"] = True
+                        self._show_busy("백엔드 서버 확인 완료", 45)
+                        maybe_open()
+                        return
+
+                    self.log("이전 백엔드 서버를 감지했습니다. 8000번 포트 프로세스를 정리하고 새로 시작합니다.", level="warn")
+
+                    def after_cleanup(killed: bool) -> None:
+                        if killed:
+                            self.log("이전 백엔드 서버 정리 완료.")
+                        start_backend()
+
+                    self._async_check(lambda: bool(self._terminate_backend_port_owners()), after_cleanup)
+
+                self._async_check(self._backend_supports_current_features, capability_checked)
                 return
             start_backend()
 
         start_web_side()
         self._async_check(
-            lambda: self._url_ready("http://127.0.0.1:8000/", timeout=0.45),
+            self._backend_ready,
             backend_checked,
         )
 
@@ -713,7 +816,7 @@ class LauncherWindow(QMainWindow):
         self.desktop_status.setProperty("state", "ok")
         self.desktop_status.style().unpolish(self.desktop_status)
         self.desktop_status.style().polish(self.desktop_status)
-        proc = self._start_gui_process([sys.executable, "run.py"], DESKTOP_APP_DIR, "영상 자동화 앱")
+        proc = self._start_gui_process([_windowed_python_executable(), "run.py"], DESKTOP_APP_DIR, "영상 자동화 앱")
         self._poll_until(
             lambda: self._pid_alive(proc.pid),
             lambda: self._show_busy("데스크톱 앱 확인 완료", 95) or QTimer.singleShot(400, self._hide_busy),
@@ -725,7 +828,7 @@ class LauncherWindow(QMainWindow):
     def run_transcript_tool(self) -> None:
         self._append_debug("FLOW", "자막 도구 실행 시작")
         self._show_busy("자막 도구 실행 중...", 20)
-        proc = self._start_gui_process([sys.executable, "u_scrp.py"], TOOLS_DIR, "자막 추출 도구")
+        proc = self._start_gui_process([_windowed_python_executable(), "u_scrp.py"], TOOLS_DIR, "자막 추출 도구")
         self._poll_until(
             lambda: self._pid_alive(proc.pid),
             lambda: self._show_busy("자막 도구 확인 완료", 95) or QTimer.singleShot(400, self._hide_busy),

@@ -13,6 +13,7 @@ import { generateVideo } from "./services/videoExport.js";
 
 let scenes = [];
 let pipelineAbort = false;
+let lastRenderedVideoPath = localStorage.getItem("tubegen_plain_last_video_path") || "";
 const abortRef = { get current() { return pipelineAbort; } };
 
 const el = (id) => document.getElementById(id);
@@ -30,19 +31,38 @@ function setStatus(text, type = "") {
   pill.className = `status-pill ${type}`.trim();
 }
 
+function normalizeHeaderValue(value, label) {
+  const cleaned = String(value || "")
+    .replace(/[\u200B-\u200D\uFEFF]/g, "")
+    .trim()
+    .replace(/^["']|["']$/g, "");
+  if (!cleaned) return "";
+  if (/[^\x21-\x7E]/.test(cleaned)) {
+    throw new Error(`${label}에 한글, 공백, 특수 공백이 섞여 있습니다. API 키만 다시 붙여넣으세요.`);
+  }
+  return cleaned;
+}
+
 function getSettings() {
   return {
-    geminiKey: localStorage.getItem(STORAGE_KEYS.geminiKey) || "",
-    geminiModel: localStorage.getItem(STORAGE_KEYS.geminiModel) || "gemini-2.5-flash",
-    geminiImageModel: localStorage.getItem(STORAGE_KEYS.geminiImageModel) || DEFAULT_GEMINI_IMAGE_MODEL,
-    geminiStyle: localStorage.getItem(STORAGE_KEYS.geminiStyle) || "gemini-crayon",
-    geminiCustomStyle: localStorage.getItem(STORAGE_KEYS.geminiCustomStyle) || "",
-    elevenLabsKey: localStorage.getItem(STORAGE_KEYS.elevenLabsKey) || "",
-    elevenLabsVoice: localStorage.getItem(STORAGE_KEYS.elevenLabsVoice) || DEFAULT_VOICE_ID,
-    elevenLabsModel: localStorage.getItem(STORAGE_KEYS.elevenLabsModel) || DEFAULT_ELEVENLABS_MODEL,
-    falKey: localStorage.getItem(STORAGE_KEYS.falKey) || "",
-    falSceneLimit: Number(localStorage.getItem("tubegen_plain_fal_scene_limit") || String(ANIMATION.ENABLED_SCENES)),
+    geminiKey: el("geminiKey")?.value || localStorage.getItem(STORAGE_KEYS.geminiKey) || "",
+    geminiModel: el("geminiModel")?.value || localStorage.getItem(STORAGE_KEYS.geminiModel) || "gemini-2.5-flash",
+    geminiImageModel: el("geminiImageModel")?.value || localStorage.getItem(STORAGE_KEYS.geminiImageModel) || DEFAULT_GEMINI_IMAGE_MODEL,
+    geminiStyle: el("geminiStyle")?.value || localStorage.getItem(STORAGE_KEYS.geminiStyle) || "gemini-crayon",
+    geminiCustomStyle: el("geminiCustomStyle")?.value || localStorage.getItem(STORAGE_KEYS.geminiCustomStyle) || "",
+    elevenLabsKey: "",
+    elevenLabsVoice: DEFAULT_VOICE_ID,
+    elevenLabsModel: DEFAULT_ELEVENLABS_MODEL,
+    falKey: "",
+    falSceneLimit: ANIMATION.ENABLED_SCENES,
   };
+}
+
+function saveAiOptionsQuiet() {
+  localStorage.setItem(STORAGE_KEYS.geminiModel, el("geminiModel").value);
+  localStorage.setItem(STORAGE_KEYS.geminiImageModel, el("geminiImageModel").value);
+  localStorage.setItem(STORAGE_KEYS.geminiStyle, el("geminiStyle").value);
+  localStorage.setItem(STORAGE_KEYS.geminiCustomStyle, el("geminiCustomStyle").value.trim());
 }
 
 function getGeminiStylePromptText() {
@@ -54,18 +74,19 @@ function getGeminiStylePromptText() {
 }
 
 function saveSettings() {
-  localStorage.setItem(STORAGE_KEYS.geminiKey, el("geminiKey").value.trim());
-  localStorage.setItem(STORAGE_KEYS.geminiModel, el("geminiModel").value);
-  localStorage.setItem(STORAGE_KEYS.geminiImageModel, el("geminiImageModel").value);
-  localStorage.setItem(STORAGE_KEYS.geminiStyle, el("geminiStyle").value);
-  localStorage.setItem(STORAGE_KEYS.geminiCustomStyle, el("geminiCustomStyle").value.trim());
-  localStorage.setItem(STORAGE_KEYS.elevenLabsKey, el("elevenLabsKey").value.trim());
-  localStorage.setItem(STORAGE_KEYS.elevenLabsVoice, el("elevenLabsVoice").value.trim());
-  localStorage.setItem(STORAGE_KEYS.elevenLabsModel, el("elevenLabsModel").value);
-  localStorage.setItem(STORAGE_KEYS.falKey, el("falKey").value.trim());
-  localStorage.setItem("tubegen_plain_fal_scene_limit", String(Number(el("falSceneLimit").value) || ANIMATION.ENABLED_SCENES));
+  let geminiKey = "";
+  try {
+    geminiKey = normalizeHeaderValue(el("geminiKey").value, "Gemini API Key");
+  } catch (error) {
+    setStatus("키 형식 오류", "error");
+    log(error.message);
+    return;
+  }
+  el("geminiKey").value = geminiKey;
+  localStorage.setItem(STORAGE_KEYS.geminiKey, geminiKey);
+  saveAiOptionsQuiet();
   setStatus("설정 저장됨", "ok");
-  log("API 설정 저장 완료");
+  log("Gemini API 설정 저장 완료");
 }
 
 function loadSettings() {
@@ -75,11 +96,6 @@ function loadSettings() {
   el("geminiImageModel").value = s.geminiImageModel;
   el("geminiStyle").value = s.geminiStyle;
   el("geminiCustomStyle").value = s.geminiCustomStyle;
-  el("elevenLabsKey").value = s.elevenLabsKey;
-  el("elevenLabsVoice").value = s.elevenLabsVoice;
-  el("elevenLabsModel").value = s.elevenLabsModel;
-  el("falKey").value = s.falKey;
-  el("falSceneLimit").value = String(s.falSceneLimit || ANIMATION.ENABLED_SCENES);
   syncCustomStyleVisibility();
 }
 
@@ -133,6 +149,17 @@ function switchView(name) {
     view.classList.toggle("active", view.id === `view-${name}`);
   });
   if (name === "projects") renderProjects();
+}
+
+function setSettingsOpen(open) {
+  const panel = el("settingsPanel");
+  const backdrop = el("settingsBackdrop");
+  const toggle = el("settingsToggleBtn");
+  if (!panel || !backdrop || !toggle) return;
+  panel.classList.toggle("open", open);
+  panel.setAttribute("aria-hidden", String(!open));
+  toggle.setAttribute("aria-expanded", String(open));
+  backdrop.hidden = !open;
 }
 
 function splitManualScript(text) {
@@ -201,10 +228,155 @@ function cleanJson(text) {
 
 const BACKEND_URL = "http://localhost:8000";
 
+function currentProjectName() {
+  return el("projectName")?.value.trim()
+    || el("autoProjectName")?.value.trim()
+    || el("topicInput")?.value.trim()
+    || "untitled_project";
+}
+
+function timestampName() {
+  return new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
+}
+
+function blobToBase64(blob) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      const dataUrl = String(reader.result || "");
+      const commaIndex = dataUrl.lastIndexOf(",");
+      resolve(commaIndex >= 0 ? dataUrl.slice(commaIndex + 1) : dataUrl);
+    };
+    reader.onerror = () => reject(reader.error || new Error("파일 변환 실패"));
+    reader.readAsDataURL(blob);
+  });
+}
+
+async function saveGeneratedAsset({ kind, filename, text, contentBase64, projectName = currentProjectName() }) {
+  const response = await fetch(`${BACKEND_URL}/api/assets/save`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      project_name: projectName,
+      kind,
+      filename,
+      text,
+      content_base64: contentBase64,
+    }),
+  });
+  return readApiJson(response);
+}
+
+async function openFolder(folderPath) {
+  const response = await fetch(`${BACKEND_URL}/api/system/open-folder`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ path: folderPath }),
+  });
+  return readApiJson(response);
+}
+
+async function convertWebmToMp4(inputPath) {
+  const finalInputPath = String(inputPath || "").trim();
+  if (!finalInputPath) {
+    log("변환할 WebM 파일 경로가 없습니다. 먼저 WebM 영상을 내보내세요.");
+    return;
+  }
+  setStatus("MP4 변환 중", "");
+  log(`MP4 변환 시작: ${finalInputPath}`);
+  try {
+    const response = await fetch(`${BACKEND_URL}/api/video/convert-to-mp4`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ input_path: finalInputPath }),
+    });
+    const result = await readApiJson(response);
+    log(`MP4 변환 완료: ${result.output_path}`);
+    setStatus("MP4 변환 완료", "ok");
+    const ok = window.confirm(`MP4 변환 완료\n\n파일:\n${result.output_path}\n\n폴더를 열까요?`);
+    if (ok) await openFolder(result.folder_path || result.output_path);
+  } catch (error) {
+    log(`MP4 변환 실패: ${error.message}`);
+    setStatus("변환 오류", "error");
+  }
+}
+
+async function convertLastVideo() {
+  if (lastRenderedVideoPath && lastRenderedVideoPath.toLowerCase().endsWith(".webm")) {
+    await convertWebmToMp4(lastRenderedVideoPath);
+    return;
+  }
+  const input = el("convertVideoFileInput");
+  if (input) input.click();
+  else log("변환할 WebM 파일을 먼저 내보내세요.");
+}
+
+async function renderStoryboardMp4OnServer(validScenes) {
+  const payloadScenes = validScenes.map((scene, index) => ({
+    sceneNumber: scene.sceneNumber || index + 1,
+    imageData: scene.imageData,
+    duration: Math.max(1, Number(scene.audioDuration) || Number(scene.videoDuration) || 5),
+  }));
+  const response = await fetch(`${BACKEND_URL}/api/video/render-storyboard`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      project_name: currentProjectName(),
+      default_duration: 5,
+      scenes: payloadScenes,
+    }),
+  });
+  return readApiJson(response);
+}
+
+async function confirmSavedLocation(saved, label) {
+  if (!saved?.folder_path) return;
+  log(`${label} 저장 위치: ${saved.file_path}`);
+  const ok = window.confirm(`${label} 저장 완료\n\n파일:\n${saved.file_path}\n\n폴더를 열까요?`);
+  if (ok) {
+    try {
+      await openFolder(saved.folder_path);
+    } catch (error) {
+      log(`폴더 열기 실패: ${error.message}`);
+    }
+  }
+}
+
+async function saveSceneImageFile(index, imageBase64) {
+  const sceneNumber = scenes[index]?.sceneNumber || index + 1;
+  return saveGeneratedAsset({
+    kind: "images",
+    filename: `scene_${String(sceneNumber).padStart(3, "0")}.png`,
+    contentBase64: imageBase64,
+  });
+}
+
+async function saveStoryboardSnapshot(label = "스토리보드") {
+  if (!scenes.length) return null;
+  try {
+    const saved = await saveGeneratedAsset({
+      kind: "storyboards",
+      filename: `storyboard_${timestampName()}.json`,
+      text: JSON.stringify({ scenes }, null, 2),
+    });
+    await confirmSavedLocation(saved, label);
+    return saved;
+  } catch (error) {
+    const message = String(error?.message || error);
+    if (message.includes("HTTP 404")) {
+      log("씬은 생성됐지만 자동 저장 API가 아직 적용되지 않았습니다. 런처와 브라우저를 완전히 닫고 다시 실행하세요.");
+    } else {
+      log(`씬 자동 저장 실패: ${message}`);
+    }
+    return null;
+  }
+}
+
 async function callGemini(prompt) {
-  const { geminiKey, geminiModel } = getSettings();
+  const { geminiModel } = getSettings();
+  const geminiKey = normalizeHeaderValue(getSettings().geminiKey, "Gemini API Key");
   if (!geminiKey) {
-    throw new Error("Gemini API Key가 없습니다. API 설정 탭에서 저장하세요.");
+    throw new Error("Gemini API Key가 없습니다. 왼쪽 YouTube Unified 영역 하단에서 저장하세요.");
   }
 
   const url = `${BACKEND_URL}/api/proxy/gemini?model=${encodeURIComponent(geminiModel)}`;
@@ -244,6 +416,23 @@ function autoLog(message) {
   box.scrollTop = box.scrollHeight;
 }
 
+async function readApiJson(response) {
+  const text = await response.text();
+  let data = {};
+  if (text) {
+    try {
+      data = JSON.parse(text);
+    } catch {
+      data = { detail: text };
+    }
+  }
+  if (!response.ok) {
+    const detail = data.detail || data.message || response.statusText;
+    throw new Error(`HTTP ${response.status}: ${typeof detail === "string" ? detail : JSON.stringify(detail)}`);
+  }
+  return data;
+}
+
 function setAutoStatus(text, type = "") {
   const pill = el("autoStatusPill");
   if (pill) {
@@ -274,7 +463,7 @@ async function startAutomation() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ project_name: projectName })
     });
-    const createData = await createResp.json();
+    const createData = await readApiJson(createResp);
     autoProjectRoot = createData.project_root;
     autoLog(`프로젝트 생성 완료: ${autoProjectRoot}`);
 
@@ -297,7 +486,7 @@ async function startAutomation() {
         min_gap: minGap
       })
     });
-    const searchData = await searchResp.json();
+    const searchData = await readApiJson(searchResp);
     autoCandidates = searchData.candidates || [];
     autoLog(`${autoCandidates.length}개 후보 프레임 발견`);
 
@@ -322,8 +511,8 @@ function renderAutoCandidates() {
   container.innerHTML = autoCandidates.map((c, i) => `
     <div class="panel" style="padding: 10px; border: 1px solid var(--border); border-radius: 8px;">
       <strong>후보 ${i + 1}</strong>
-      <p style="font-size: 0.8rem; margin: 5px 0;">시간: ${c.timestamp.toFixed(2)}s</p>
-      <p style="font-size: 0.8rem; color: var(--text-muted); word-break: break-all; opacity: 0.7;">${c.frame_path.split('\\').pop()}</p>
+      <p style="font-size: 0.8rem; margin: 5px 0;">시간: ${Number(c.timestamp_sec || 0).toFixed(2)}s</p>
+      <p style="font-size: 0.8rem; color: var(--text-muted); word-break: break-all; opacity: 0.7;">${String(c.frame_path || "").split('\\').pop()}</p>
     </div>
   `).join("");
 }
@@ -347,10 +536,11 @@ async function finalizeVideo() {
         subtitle_path: ""
       })
     });
-    const processData = await processResp.json();
+    const processData = await readApiJson(processResp);
     autoLog(`합성 완료: ${processData.final_video_path}`);
     setAutoStatus("완료", "ok");
-    alert(`영상이 생성되었습니다: ${processData.final_video_path}`);
+    const ok = window.confirm(`영상이 생성되었습니다.\n\n${processData.final_video_path}\n\n저장 폴더를 열까요?`);
+    if (ok) await openFolder(processData.final_video_path);
   } catch (err) {
     autoLog(`합성 오류: ${err.message}`);
     setAutoStatus("오류", "error");
@@ -453,6 +643,7 @@ async function generateStoryboard() {
     renderStoryboard();
     setStatus("생성 완료", "ok");
     log(`${scenes.length}개 씬 생성 완료`);
+    await saveStoryboardSnapshot("생성된 씬 JSON");
   } catch (error) {
     setStatus("오류", "error");
     log(error.message);
@@ -462,7 +653,7 @@ async function generateStoryboard() {
   }
 }
 
-function splitOnly() {
+async function splitOnly() {
   const sourceText = el("scriptInput").value.trim();
   if (!sourceText) {
     setStatus("대본 필요", "error");
@@ -473,6 +664,11 @@ function splitOnly() {
   renderStoryboard();
   setStatus("분할 완료", "ok");
   log(`${scenes.length}개 씬으로 분할했습니다.`);
+  try {
+    await saveStoryboardSnapshot("분할된 씬 JSON");
+  } catch (error) {
+    log(`씬 자동 저장 실패: ${error.message}`);
+  }
   updateCounts();
 }
 
@@ -502,10 +698,6 @@ function renderStoryboard() {
         }
         <div class="scene-asset-actions">
           <button type="button" class="secondary tiny" data-action="img-one" data-i="${index}">이미지</button>
-          <button type="button" class="secondary tiny" data-action="tts-one" data-i="${index}">TTS</button>
-          <button type="button" class="secondary tiny" data-action="fal-one" data-i="${index}" ${
-            scene.imageData ? "" : "disabled"
-          }>FAL</button>
         </div>
         ${
           scene.audioData
@@ -551,15 +743,14 @@ function renderStoryboard() {
       const i = Number(btn.dataset.i);
       const action = btn.dataset.action;
       if (action === "img-one") runSingleImage(i);
-      if (action === "tts-one") runSingleTts(i);
-      if (action === "fal-one") runSingleFal(i);
     });
   });
+  applyTooltips(container);
 }
 
 function setPipelineBusy(busy) {
   if (!busy) pipelineAbort = false;
-  ["genImagesBtn", "genTtsBtn", "genFalBtn", "exportMp4Btn"].forEach((id) => {
+  ["genImagesBtn", "exportMp4Btn"].forEach((id) => {
     const b = el(id);
     if (b) b.disabled = !!busy;
   });
@@ -580,8 +771,10 @@ async function runSingleImage(index) {
     });
     if (!b64) throw new Error("이미지 생성 실패");
     scenes[index].imageData = b64;
+    const saved = await saveSceneImageFile(index, b64);
     renderStoryboard();
     log(`씬 ${index + 1} 이미지 생성 완료`);
+    await confirmSavedLocation(saved, `씬 ${index + 1} 이미지`);
     setStatus("완료", "ok");
   } catch (e) {
     log(e.message || String(e));
@@ -646,6 +839,8 @@ async function runAllImages() {
   }
   setPipelineBusy(true);
   const stylePrompt = getGeminiStylePromptText();
+  let lastSaved = null;
+  let savedCount = 0;
   try {
     for (let i = 0; i < scenes.length; i++) {
       setStatus(`이미지 ${i + 1}/${scenes.length}`, "");
@@ -654,12 +849,18 @@ async function runAllImages() {
         imageModel: settings.geminiImageModel,
         geminiStylePrompt: stylePrompt,
       });
-      if (b64) scenes[i].imageData = b64;
-      else log(`씬 ${i + 1} 이미지 실패`);
+      if (b64) {
+        scenes[i].imageData = b64;
+        lastSaved = await saveSceneImageFile(i, b64);
+        savedCount += 1;
+      } else {
+        log(`씬 ${i + 1} 이미지 실패`);
+      }
       renderStoryboard();
     }
     setStatus("이미지 일괄 완료", "ok");
-    log("전체 이미지 생성 작업 종료");
+    log(`전체 이미지 생성 작업 종료: ${savedCount}개 파일 저장`);
+    if (lastSaved) await confirmSavedLocation(lastSaved, "전체 이미지");
   } catch (e) {
     log(e.message || String(e));
     setStatus("오류", "error");
@@ -756,33 +957,19 @@ async function runExportMp4() {
   }
   setPipelineBusy(true);
   setStatus("MP4 렌더링", "");
-  log("MP4/WebM 렌더링 시작 (브라우저 인코더 사용)");
+  log("FFmpeg 서버 MP4 렌더링 시작");
 
   try {
-    const result = await generateVideo(
-      scenes,
-      (msg) => {
-        log(msg);
-        setStatus(msg.slice(0, 24), "");
-      },
-      abortRef,
-      { enableSubtitles: true }
+    const saved = await renderStoryboardMp4OnServer(valid);
+    lastRenderedVideoPath = saved.output_path || "";
+    if (lastRenderedVideoPath) {
+      localStorage.setItem("tubegen_plain_last_video_path", lastRenderedVideoPath);
+    }
+    log(`MP4 렌더링 완료: ${saved.output_path} (${saved.scene_count}씬, 약 ${Math.round(saved.duration_seconds)}초)`);
+    await confirmSavedLocation(
+      { file_path: saved.output_path, folder_path: saved.folder_path },
+      "MP4 영상"
     );
-
-    if (!result?.videoBlob) throw new Error("렌더 결과 없음");
-
-    const ext = result.mimeType?.includes("mp4") ? "mp4" : "webm";
-    const filename = `tubegen-export.${ext}`;
-    const url = URL.createObjectURL(result.videoBlob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    URL.revokeObjectURL(url);
-
-    log(`다운로드: ${filename} (${result.mimeType})`);
     setStatus("내보내기 완료", "ok");
   } catch (e) {
     log(e.message || String(e));
@@ -850,6 +1037,7 @@ function renderProjects() {
   list.querySelectorAll("[data-delete]").forEach((button) => {
     button.addEventListener("click", () => deleteProject(button.dataset.delete));
   });
+  applyTooltips(list);
   updateCounts();
 }
 
@@ -880,12 +1068,12 @@ function clearAll() {
   log("스토리보드 비움");
 }
 
-function exportJson() {
+async function exportJson() {
   if (!scenes.length) return log("내보낼 씬이 없습니다.");
-  downloadFile("storyboard.json", JSON.stringify({ scenes }, null, 2), "application/json");
+  await downloadFile(`storyboard_${timestampName()}.json`, JSON.stringify({ scenes }, null, 2), "application/json", "exports", "JSON 파일");
 }
 
-function exportCsv() {
+async function exportCsv() {
   if (!scenes.length) return log("내보낼 씬이 없습니다.");
   const header = ["sceneNumber", "narration", "visualPrompt", "sentiment", "composition_type"];
   const rows = scenes.map((scene) => [
@@ -896,10 +1084,16 @@ function exportCsv() {
     scene.analysis.composition_type,
   ]);
   const csv = [header, ...rows].map((row) => row.map(csvEscape).join(",")).join("\n");
-  downloadFile("storyboard.csv", "\ufeff" + csv, "text/csv;charset=utf-8");
+  await downloadFile(`storyboard_${timestampName()}.csv`, "\ufeff" + csv, "text/csv;charset=utf-8", "exports", "CSV 파일");
 }
 
-function downloadFile(filename, content, type) {
+async function downloadFile(filename, content, type, kind = "exports", label = "파일") {
+  let saved = null;
+  try {
+    saved = await saveGeneratedAsset({ kind, filename, text: content });
+  } catch (error) {
+    log(`서버 폴더 저장 실패: ${error.message}`);
+  }
   const blob = new Blob([content], { type });
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
@@ -910,6 +1104,7 @@ function downloadFile(filename, content, type) {
   link.remove();
   URL.revokeObjectURL(url);
   log(`파일 내보내기: ${filename}`);
+  if (saved) await confirmSavedLocation(saved, label);
 }
 
 function csvEscape(value) {
@@ -923,6 +1118,82 @@ function escapeHtml(value) {
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;");
+}
+
+function applyTooltips(root = document) {
+  const tips = [
+    [".nav-button[data-view='create']", "대본을 씬으로 나누고 이미지와 영상 내보내기를 준비합니다."],
+    [".nav-button[data-view='automation']", "영상 URL이나 파일에서 장면과 자막을 자동 처리합니다."],
+    [".nav-button[data-view='subtitles']", "유튜브 영상의 자막을 가져와 대본으로 활용합니다."],
+    [".nav-button[data-view='projects']", "브라우저에 저장한 작업을 불러오거나 삭제합니다."],
+    ["#settingsToggleBtn", "Gemini API 키 설정 패널을 엽니다."],
+    ["#settingsCloseBtn", "API 키 설정 패널을 닫습니다."],
+    ["#geminiKey", "스토리보드와 이미지 생성을 위한 Gemini API 키입니다."],
+    ["#geminiModel", "스토리보드 생성과 텍스트 처리에 사용할 Gemini 모델입니다."],
+    ["#geminiImageModel", "씬 이미지를 생성할 Gemini 이미지 모델입니다."],
+    ["#geminiStyle", "모든 씬 이미지에 적용할 기본 화풍을 고릅니다."],
+    ["#geminiCustomStyle", "커스텀 화풍을 영어 프롬프트로 입력합니다."],
+    ["#saveSettingsBtn", "API 키와 모델 설정을 이 브라우저에 저장합니다."],
+    ["#testKeyBtn", "저장한 Gemini API 키가 동작하는지 확인합니다."],
+    ["#statusPill", "현재 앱 작업 상태를 짧게 보여줍니다."],
+    ["#projectName", "저장 목록에서 구분할 스토리보드 작업 이름입니다."],
+    ["#topicInput", "대본이 없을 때 AI가 참고할 영상 주제입니다."],
+    ["#scriptInput", "직접 쓴 대본이나 추출한 자막을 붙여넣습니다."],
+    ["#generateBtn", "주제나 대본을 바탕으로 AI 스토리보드를 만듭니다."],
+    ["#splitBtn", "AI 생성 없이 입력 대본을 문장 기준으로 씬 분할합니다."],
+    ["#sceneCount", "현재 스토리보드에 들어 있는 씬 수입니다."],
+    ["#savedCount", "브라우저에 저장된 프로젝트 수입니다."],
+    ["#logBox", "스토리보드와 미디어 작업 진행 기록입니다."],
+    ["#genImagesBtn", "모든 씬의 이미지 프롬프트로 이미지를 생성합니다."],
+    ["#exportMp4Btn", "이미지와 오디오를 묶어 MP4 또는 WebM으로 저장합니다."],
+    ["#convertLastVideoBtn", "마지막으로 저장한 WebM 영상을 MP4로 변환합니다."],
+    ["#pipelineCancelBtn", "진행 중인 렌더링 취소를 요청합니다."],
+    ["#saveBtn", "현재 스토리보드와 에셋을 브라우저에 저장합니다."],
+    ["#exportJsonBtn", "씬 데이터 전체를 JSON 파일로 내려받습니다."],
+    ["#exportCsvBtn", "씬 번호, 나레이션, 프롬프트를 CSV로 내려받습니다."],
+    ["#clearBtn", "현재 화면의 스토리보드 작업 내용을 비웁니다."],
+    ["#storyboard", "생성된 씬을 편집하고 이미지 결과를 확인합니다."],
+    ["#autoProjectName", "영상 자동화 결과를 구분할 작업 이름입니다."],
+    ["#videoSource", "유튜브 주소 또는 로컬 영상 파일 경로를 입력합니다."],
+    ["#startAutoBtn", "스마트 장면 검색과 자막 추출을 백엔드로 실행합니다."],
+    ["#toggleAdvancedAuto", "장면 검색 방식과 샘플링 옵션을 열고 닫습니다."],
+    ["#autoSearchMode", "중요 장면 위주 또는 균일 추출 방식을 고릅니다."],
+    ["#autoResultCount", "찾을 후보 장면 개수를 정합니다."],
+    ["#autoSamplingInterval", "영상을 몇 초 간격으로 검사할지 정합니다."],
+    ["#autoMinGap", "후보 장면 사이 최소 시간 간격입니다."],
+    ["#autoLogBox", "백엔드 영상 자동화 처리 로그입니다."],
+    ["#autoStatusPill", "영상 자동화 처리 상태입니다."],
+    ["#autoCandidates", "자동 검색으로 찾은 후보 장면 목록입니다."],
+    ["#finalizeVideoBtn", "선택된 결과로 자막 포함 최종 영상을 합성합니다."],
+    ["#subtitleYoutubeUrl", "자막을 가져올 유튜브 영상 주소입니다."],
+    ["#subtitleLangs", "우선 검색할 자막 언어 코드입니다. 예: ko,en"],
+    ["#extractSubtitleBtn", "유튜브 자막을 가져와 텍스트로 표시합니다."],
+    ["#subtitleTextarea", "추출된 자막 원문입니다. 직접 편집은 막혀 있습니다."],
+    ["#copySubtitleBtn", "추출한 자막을 클립보드에 복사합니다."],
+    ["#sendToStoryboardBtn", "추출한 자막을 스토리보드 대본 입력칸으로 보냅니다."],
+    ["#refreshProjectsBtn", "저장된 프로젝트 목록을 다시 읽습니다."],
+    ["#projectList", "저장된 프로젝트를 불러오거나 삭제합니다."],
+    [".scene-card", "씬 하나의 나레이션, 이미지 프롬프트, 생성 결과입니다."],
+    [".scene-number", "스토리보드 안에서의 씬 순서입니다."],
+    [".scene-thumb", "이 씬에 생성된 이미지 미리보기입니다."],
+    [".scene-thumb-placeholder", "아직 이 씬의 이미지가 생성되지 않았습니다."],
+    [".scene-audio", "이 씬의 TTS 오디오 미리듣기입니다."],
+    [".scene-video-link", "FAL로 생성된 씬 영상 URL을 새 창에서 엽니다."],
+    [".scene-card textarea[data-field='narration']", "영상에 읽힐 나레이션 문장입니다."],
+    [".scene-card textarea[data-field='visualPrompt']", "이 씬 이미지 생성을 위한 영어 프롬프트입니다."],
+    ["[data-action='img-one']", "이 씬 하나만 이미지를 다시 생성합니다."],
+    ["[data-load]", "저장된 프로젝트를 현재 작업 화면으로 불러옵니다."],
+    ["[data-delete]", "저장된 프로젝트를 브라우저 저장소에서 삭제합니다."],
+  ];
+
+  tips.forEach(([selector, text]) => {
+    root.querySelectorAll(selector).forEach((node) => {
+      node.setAttribute("title", text);
+      if (/^(BUTTON|INPUT|TEXTAREA|SELECT|A)$/.test(node.tagName) && !node.getAttribute("aria-label")) {
+        node.setAttribute("aria-label", text);
+      }
+    });
+  });
 }
 
 async function testKey() {
@@ -943,6 +1214,12 @@ function bindEvents() {
   document.querySelectorAll(".nav-button").forEach((button) => {
     button.addEventListener("click", () => switchView(button.dataset.view));
   });
+  el("settingsToggleBtn").addEventListener("click", () => setSettingsOpen(true));
+  el("settingsCloseBtn").addEventListener("click", () => setSettingsOpen(false));
+  el("settingsBackdrop").addEventListener("click", () => setSettingsOpen(false));
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") setSettingsOpen(false);
+  });
   el("generateBtn").addEventListener("click", generateStoryboard);
   el("splitBtn").addEventListener("click", splitOnly);
   el("saveBtn").addEventListener("click", saveCurrentProject);
@@ -954,12 +1231,24 @@ function bindEvents() {
   el("testKeyBtn").addEventListener("click", testKey);
 
   el("genImagesBtn").addEventListener("click", runAllImages);
-  el("genTtsBtn").addEventListener("click", runAllTts);
-  el("genFalBtn").addEventListener("click", runFalBatch);
   el("exportMp4Btn").addEventListener("click", runExportMp4);
+  el("convertLastVideoBtn").addEventListener("click", convertLastVideo);
+  el("convertVideoFileInput").addEventListener("change", async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    log("브라우저 보안상 선택한 파일의 전체 경로를 읽을 수 없습니다. 먼저 이 앱에서 WebM을 내보낸 뒤 변환 버튼을 사용하세요.");
+    event.target.value = "";
+  });
   el("pipelineCancelBtn").addEventListener("click", cancelPipeline);
 
-  el("geminiStyle").addEventListener("change", syncCustomStyleVisibility);
+  ["geminiModel", "geminiImageModel", "geminiStyle"].forEach((id) => {
+    el(id).addEventListener("change", () => {
+      if (id === "geminiStyle") syncCustomStyleVisibility();
+      saveAiOptionsQuiet();
+      setStatus("AI 옵션 저장됨", "ok");
+    });
+  });
+  el("geminiCustomStyle").addEventListener("input", saveAiOptionsQuiet);
 
   // New Events
   el("startAutoBtn").addEventListener("click", startAutomation);
@@ -978,10 +1267,11 @@ function bindEvents() {
 function boot() {
   loadSettings();
   bindEvents();
+  applyTooltips();
   renderStoryboard();
   renderProjects();
   updateCounts();
-  log("HTML/JS 파이프라인 로드 완료 (이미지·TTS·FAL·MP4)");
+  log("HTML/JS 파이프라인 로드 완료 (Gemini 이미지·MP4)");
 }
 
 boot();

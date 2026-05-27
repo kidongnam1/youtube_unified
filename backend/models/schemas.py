@@ -14,6 +14,10 @@ class VideoProcessRequest(BaseModel):
     burn_subtitles: bool = False
     subtitle_path: Optional[str] = None
 
+class VideoConvertRequest(BaseModel):
+    input_path: str
+    output_path: Optional[str] = None
+
 class SubtitleGenerateRequest(BaseModel):
     audio_path: str
     output_dir: str
@@ -26,7 +30,7 @@ class SubtitleExtractRequest(BaseModel):
 class SmartSearchRequest(BaseModel):
     video_path: str
     output_dir: str
-    search_mode: Literal["auto", "range"] = "auto"
+    search_mode: Literal["auto", "range", "SALIENCY", "UNIFORM"] = "auto"
     result_count: int = 3
     target_time: Optional[float] = None
     window_size: float = 6.0

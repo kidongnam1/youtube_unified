@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import html
 import os
+import shutil
 import subprocess
 import sys
 import time
@@ -39,6 +40,20 @@ CHILD_LOG_FILE = ROOT / "launcher_child.log"
 
 def now_text() -> str:
     return datetime.now().strftime("%H:%M:%S")
+
+
+def _windowed_python_executable() -> str:
+    """Return a Python executable that does not create a console on Windows."""
+    if os.name != "nt":
+        return sys.executable
+    current = Path(sys.executable)
+    if current.name.lower() == "pythonw.exe":
+        return str(current)
+    sibling = current.with_name("pythonw.exe")
+    if sibling.exists():
+        return str(sibling)
+    found = shutil.which("pythonw") or shutil.which("pyw")
+    return found or sys.executable
 
 
 # ===========================================================================
@@ -713,7 +728,7 @@ class LauncherWindow(QMainWindow):
         self.desktop_status.setProperty("state", "ok")
         self.desktop_status.style().unpolish(self.desktop_status)
         self.desktop_status.style().polish(self.desktop_status)
-        proc = self._start_gui_process([sys.executable, "run.py"], DESKTOP_APP_DIR, "영상 자동화 앱")
+        proc = self._start_gui_process([_windowed_python_executable(), "run.py"], DESKTOP_APP_DIR, "영상 자동화 앱")
         self._poll_until(
             lambda: self._pid_alive(proc.pid),
             lambda: self._show_busy("데스크톱 앱 확인 완료", 95) or QTimer.singleShot(400, self._hide_busy),
@@ -725,7 +740,7 @@ class LauncherWindow(QMainWindow):
     def run_transcript_tool(self) -> None:
         self._append_debug("FLOW", "자막 도구 실행 시작")
         self._show_busy("자막 도구 실행 중...", 20)
-        proc = self._start_gui_process([sys.executable, "u_scrp.py"], TOOLS_DIR, "자막 추출 도구")
+        proc = self._start_gui_process([_windowed_python_executable(), "u_scrp.py"], TOOLS_DIR, "자막 추출 도구")
         self._poll_until(
             lambda: self._pid_alive(proc.pid),
             lambda: self._show_busy("자막 도구 확인 완료", 95) or QTimer.singleShot(400, self._hide_busy),

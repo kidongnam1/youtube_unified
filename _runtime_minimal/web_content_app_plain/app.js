@@ -37,11 +37,11 @@ function getSettings() {
     geminiImageModel: localStorage.getItem(STORAGE_KEYS.geminiImageModel) || DEFAULT_GEMINI_IMAGE_MODEL,
     geminiStyle: localStorage.getItem(STORAGE_KEYS.geminiStyle) || "gemini-crayon",
     geminiCustomStyle: localStorage.getItem(STORAGE_KEYS.geminiCustomStyle) || "",
-    elevenLabsKey: localStorage.getItem(STORAGE_KEYS.elevenLabsKey) || "",
-    elevenLabsVoice: localStorage.getItem(STORAGE_KEYS.elevenLabsVoice) || DEFAULT_VOICE_ID,
-    elevenLabsModel: localStorage.getItem(STORAGE_KEYS.elevenLabsModel) || DEFAULT_ELEVENLABS_MODEL,
-    falKey: localStorage.getItem(STORAGE_KEYS.falKey) || "",
-    falSceneLimit: Number(localStorage.getItem("tubegen_plain_fal_scene_limit") || String(ANIMATION.ENABLED_SCENES)),
+    elevenLabsKey: "",
+    elevenLabsVoice: DEFAULT_VOICE_ID,
+    elevenLabsModel: DEFAULT_ELEVENLABS_MODEL,
+    falKey: "",
+    falSceneLimit: ANIMATION.ENABLED_SCENES,
   };
 }
 
@@ -59,13 +59,8 @@ function saveSettings() {
   localStorage.setItem(STORAGE_KEYS.geminiImageModel, el("geminiImageModel").value);
   localStorage.setItem(STORAGE_KEYS.geminiStyle, el("geminiStyle").value);
   localStorage.setItem(STORAGE_KEYS.geminiCustomStyle, el("geminiCustomStyle").value.trim());
-  localStorage.setItem(STORAGE_KEYS.elevenLabsKey, el("elevenLabsKey").value.trim());
-  localStorage.setItem(STORAGE_KEYS.elevenLabsVoice, el("elevenLabsVoice").value.trim());
-  localStorage.setItem(STORAGE_KEYS.elevenLabsModel, el("elevenLabsModel").value);
-  localStorage.setItem(STORAGE_KEYS.falKey, el("falKey").value.trim());
-  localStorage.setItem("tubegen_plain_fal_scene_limit", String(Number(el("falSceneLimit").value) || ANIMATION.ENABLED_SCENES));
   setStatus("설정 저장됨", "ok");
-  log("API 설정 저장 완료");
+  log("Gemini API 설정 저장 완료");
 }
 
 function loadSettings() {
@@ -75,11 +70,6 @@ function loadSettings() {
   el("geminiImageModel").value = s.geminiImageModel;
   el("geminiStyle").value = s.geminiStyle;
   el("geminiCustomStyle").value = s.geminiCustomStyle;
-  el("elevenLabsKey").value = s.elevenLabsKey;
-  el("elevenLabsVoice").value = s.elevenLabsVoice;
-  el("elevenLabsModel").value = s.elevenLabsModel;
-  el("falKey").value = s.falKey;
-  el("falSceneLimit").value = String(s.falSceneLimit || ANIMATION.ENABLED_SCENES);
   syncCustomStyleVisibility();
 }
 
@@ -204,7 +194,7 @@ const BACKEND_URL = "http://localhost:8000";
 async function callGemini(prompt) {
   const { geminiKey, geminiModel } = getSettings();
   if (!geminiKey) {
-    throw new Error("Gemini API Key가 없습니다. API 설정 탭에서 저장하세요.");
+    throw new Error("Gemini API Key가 없습니다. 왼쪽 YouTube Unified 영역 하단에서 저장하세요.");
   }
 
   const url = `${BACKEND_URL}/api/proxy/gemini?model=${encodeURIComponent(geminiModel)}`;
@@ -502,10 +492,6 @@ function renderStoryboard() {
         }
         <div class="scene-asset-actions">
           <button type="button" class="secondary tiny" data-action="img-one" data-i="${index}">이미지</button>
-          <button type="button" class="secondary tiny" data-action="tts-one" data-i="${index}">TTS</button>
-          <button type="button" class="secondary tiny" data-action="fal-one" data-i="${index}" ${
-            scene.imageData ? "" : "disabled"
-          }>FAL</button>
         </div>
         ${
           scene.audioData
@@ -551,15 +537,13 @@ function renderStoryboard() {
       const i = Number(btn.dataset.i);
       const action = btn.dataset.action;
       if (action === "img-one") runSingleImage(i);
-      if (action === "tts-one") runSingleTts(i);
-      if (action === "fal-one") runSingleFal(i);
     });
   });
 }
 
 function setPipelineBusy(busy) {
   if (!busy) pipelineAbort = false;
-  ["genImagesBtn", "genTtsBtn", "genFalBtn", "exportMp4Btn"].forEach((id) => {
+  ["genImagesBtn", "exportMp4Btn"].forEach((id) => {
     const b = el(id);
     if (b) b.disabled = !!busy;
   });
@@ -954,8 +938,6 @@ function bindEvents() {
   el("testKeyBtn").addEventListener("click", testKey);
 
   el("genImagesBtn").addEventListener("click", runAllImages);
-  el("genTtsBtn").addEventListener("click", runAllTts);
-  el("genFalBtn").addEventListener("click", runFalBatch);
   el("exportMp4Btn").addEventListener("click", runExportMp4);
   el("pipelineCancelBtn").addEventListener("click", cancelPipeline);
 
@@ -981,7 +963,7 @@ function boot() {
   renderStoryboard();
   renderProjects();
   updateCounts();
-  log("HTML/JS 파이프라인 로드 완료 (이미지·TTS·FAL·MP4)");
+  log("HTML/JS 파이프라인 로드 완료 (Gemini 이미지·MP4)");
 }
 
 boot();

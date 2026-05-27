@@ -32,11 +32,24 @@ function stripPrefix(base64OrDataUrl) {
   return base64OrDataUrl.includes(",") ? base64OrDataUrl.split(",")[1] : base64OrDataUrl;
 }
 
+function normalizeHeaderValue(value, label) {
+  const cleaned = String(value || "")
+    .replace(/[\u200B-\u200D\uFEFF]/g, "")
+    .trim()
+    .replace(/^["']|["']$/g, "");
+  if (!cleaned) return "";
+  if (/[^\x21-\x7E]/.test(cleaned)) {
+    throw new Error(`${label}에 한글, 공백, 특수 공백이 섞여 있습니다. API 키만 다시 붙여넣으세요.`);
+  }
+  return cleaned;
+}
+
 /**
  * Gemini 이미지 생성 (REST, gemini-2.5-flash-image)
  * @returns raw base64 문자열 또는 null
  */
 export async function generateImageForScene(scene, referenceImages, apiKey, options = {}) {
+  const finalApiKey = normalizeHeaderValue(apiKey, "Gemini API Key");
   const imageModel = options.imageModel || "gemini-2.5-flash-image";
   const styleFromCaller = options.geminiStylePrompt;
   const ref = {
@@ -104,7 +117,7 @@ Ensure the entire image consistently follows this visual style.`,
     method: "POST",
     headers: { 
       "Content-Type": "application/json",
-      "X-Gemini-API-Key": apiKey
+      "X-Gemini-API-Key": finalApiKey
     },
     body: JSON.stringify(body),
   });

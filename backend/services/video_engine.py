@@ -72,6 +72,18 @@ def extract_audio(video_path: str, audio_path: str):
     run_ffmpeg(["-i", video_path, "-vn", "-acodec", "mp3", audio_path])
     return audio_path
 
+def convert_to_mp4(input_path: str, output_path: str):
+    run_ffmpeg([
+        "-i", input_path,
+        "-c:v", "libx264",
+        "-preset", "fast",
+        "-crf", "23",
+        "-c:a", "aac",
+        "-movflags", "+faststart",
+        output_path,
+    ])
+    return output_path
+
 def burn_subtitles(video_path: str, subtitle_path: str, output_path: str):
     # FFmpeg subtitles filter needs path escaping for Windows
     abs_sub_path = os.path.abspath(subtitle_path)
